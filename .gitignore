@@ -7,3 +7,4 @@ venv/
 *.db
 .DS_Store
 .pytest_cache/
+tests/test.db

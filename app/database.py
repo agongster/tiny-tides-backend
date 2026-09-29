@@ -1,7 +1,9 @@
-"""Database engine and session factory."""
+"""Database engine, session factory, and the FastAPI session dependency."""
+
+from collections.abc import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import DATABASE_URL, USING_SQLITE_FALLBACK
 
@@ -15,3 +17,15 @@ else:
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+class Base(DeclarativeBase):
+    """Base class every ORM model inherits from."""
+
+
+def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

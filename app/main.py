@@ -1,15 +1,20 @@
 """Tiny Tides multiplayer API.
 
-Step 1 of the multiplayer plan: a deployed service with a health check, so the
-Render + Neon + GitHub Pages wiring is proven before any game features exist.
+Step 2 of the plan: accounts with unique usernames, and cloud saves.
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from .config import ALLOWED_ORIGINS, JWT_SECRET, USING_SQLITE_FALLBACK
-from .database import engine
+from . import models  # noqa: F401  (registers the tables)
+from .config import ALLOWED_ORIGINS, JWT_SECRET_IS_THROWAWAY, USING_SQLITE_FALLBACK
+from .database import Base, engine
+from .routers import auth, saves
+
+# Creates any missing tables on startup. It never alters an existing table, so
+# later column changes will need a small migration.
+Base.metadata.create_all(engine)
 
 app = FastAPI(title="Tiny Tides API")
 
@@ -22,13 +27,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(saves.router)
+
 
 @app.get("/api/health")
 def health() -> dict:
     """Reports whether the API is up and can reach its database.
 
-    Always answers 200 so a sleeping-then-waking Render instance is easy to
-    tell apart from a broken database: check the "database" field.
+    Always answers 200 so a waking Render instance is easy to tell apart from a
+    broken database: check the "database" field.
     """
     try:
         with engine.connect() as conn:
@@ -39,7 +47,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "database": database,
-        "jwt_secret": "set" if JWT_SECRET else "missing",
+        "jwt_secret": "throwaway (local)" if JWT_SECRET_IS_THROWAWAY else "set",
         "allowed_origins": ALLOWED_ORIGINS,
     }
 
