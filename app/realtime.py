@@ -91,8 +91,11 @@ class Hub:
         self.where[member.user_id] = (host.id, host.username)
         return room
 
-    def leave(self, room: Room, member: Member) -> None:
-        if room.members.get(member.user_id) is member:
+    def leave(self, room: Room, member: Member) -> bool:
+        """Removes a connection. Returns True only if it was the player's
+        current one in the room, i.e. they really left rather than reconnected."""
+        current = room.members.get(member.user_id) is member
+        if current:
             del room.members[member.user_id]
         socks = self.sockets.get(member.user_id)
         if socks:
@@ -102,9 +105,26 @@ class Hub:
                 self.where.pop(member.user_id, None)
         if not room.members:
             self.rooms.pop(room.host_id, None)
+        return current
 
 
 hub = Hub()
+_retiring: set[asyncio.Task] = set()
+
+
+async def _retire(ws: WebSocket) -> None:
+    """Tells a replaced connection to stop, then closes it. Runs on its own:
+    through Render's proxy the close can take seconds to complete, and the new
+    connection shouldn't wait for it. The "replaced" message goes first because
+    ordinary data gets through even when the close frame doesn't."""
+    try:
+        await ws.send_json({"t": "replaced"})
+    except Exception:
+        pass
+    try:
+        await ws.close(code=4000)
+    except Exception:
+        pass
 
 
 def _authenticate(token: str, host_name: str) -> tuple[User, User] | str:
@@ -148,17 +168,17 @@ async def world_socket(ws: WebSocket, host_name: str) -> None:
         await ws.send_json({"t": "error", "error": "room_full"})
         await ws.close(code=4409)
         return
-    # the same player opening a second tab replaces their first connection
-    if room and user.id in room.members:
-        old = room.members[user.id]
-        hub.leave(room, old)
-        try:
-            await old.ws.close(code=4000)
-        except Exception:
-            pass
-
+    # Reconnecting (or a second tab) replaces the player's old connection. The
+    # new one joins first, so the room never looks empty and nobody is told
+    # the player left.
+    old = room.members.get(user.id) if room else None
     me = Member(ws, user.id, user.username)
     room = hub.join(host, me)
+    if old:
+        hub.leave(room, old)
+        task = asyncio.create_task(_retire(old.ws))
+        _retiring.add(task)
+        task.add_done_callback(_retiring.discard)
     await ws.send_json({
         "t": "roster",
         "host": host.username,
@@ -166,7 +186,8 @@ async def world_socket(ws: WebSocket, host_name: str) -> None:
         "world": room.world,
         "members": [{"username": m.username, "hello": m.hello} for m in room.members.values() if m is not me],
     })
-    await hub.broadcast(room, {"t": "join", "from": user.username}, skip=user.id)
+    if not old:
+        await hub.broadcast(room, {"t": "join", "from": user.username}, skip=user.id)
     try:
         while True:
             raw = await ws.receive_text()
@@ -175,6 +196,10 @@ async def world_socket(ws: WebSocket, host_name: str) -> None:
             try:
                 msg = json.loads(raw)
             except ValueError:
+                continue
+            if isinstance(msg, dict) and msg.get("t") == "ping":
+                # lets the game notice a connection that died without closing
+                await ws.send_json({"t": "pong"})
                 continue
             if not isinstance(msg, dict) or msg.get("t") not in RELAYED:
                 continue
@@ -191,5 +216,6 @@ async def world_socket(ws: WebSocket, host_name: str) -> None:
     except Exception:
         pass
     finally:
-        hub.leave(room, me)
-        await hub.broadcast(room, {"t": "leave", "from": user.username})
+        # a replaced connection closing is not the player leaving
+        if hub.leave(room, me):
+            await hub.broadcast(room, {"t": "leave", "from": user.username})

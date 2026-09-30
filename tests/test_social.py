@@ -167,3 +167,34 @@ def test_room_rejects_missing_or_bad_auth():
     with client.websocket_connect(f"/ws/world/{host[0]}") as ws:
         ws.send_json({"t": "auth", "token": "forged"})
         assert ws.receive_json() == {"t": "error", "error": "not_logged_in"}
+
+
+def test_reconnecting_replaces_quietly():
+    host, guest = player(), player()
+    befriend(host, guest)
+    htok = host[1]["Authorization"].split()[1]
+    gtok = guest[1]["Authorization"].split()[1]
+    with client.websocket_connect(f"/ws/world/{host[0]}") as gws:
+        gws.send_json({"t": "auth", "token": gtok})
+        gws.receive_json()  # roster
+        with client.websocket_connect(f"/ws/world/{host[0]}") as h1:
+            h1.send_json({"t": "auth", "token": htok})
+            h1.receive_json()  # roster
+            assert gws.receive_json() == {"t": "join", "from": host[0]}
+            # the host's connection drops and comes back (wifi blip, second tab)
+            with client.websocket_connect(f"/ws/world/{host[0]}") as h2:
+                h2.send_json({"t": "auth", "token": htok})
+                assert [m["username"] for m in h2.receive_json()["members"]] == [guest[0]]
+                assert h1.receive_json() == {"t": "replaced"}
+                with pytest.raises(WebSocketDisconnect):
+                    h1.receive_json()
+                # the guest hears neither a leave nor a second join, just what
+                # the host sends next
+                h2.send_json({"t": "emote", "e": "wave"})
+                assert gws.receive_json()["t"] == "emote"
+                f = client.get("/api/friends", headers=guest[1]).json()["friends"][0]
+                assert f["online"] is True
+                h2.send_json({"t": "ping"})
+                assert h2.receive_json() == {"t": "pong"}
+            # now the host really leaves
+            assert gws.receive_json() == {"t": "leave", "from": host[0]}
