@@ -20,7 +20,8 @@ def player(coins=0, name=None):
     r = client.post("/api/auth/register", json={"email": f"{username}@example.com", "username": username, "password": "fishingtime"})
     assert r.status_code == 201, r.text
     h = {"Authorization": f"Bearer {r.json()['token']}"}
-    data = {"name": username.title(), "location": "lagoon", "clock": 42, "look": {"hat": "straw"}, "aquarium": [{"id": "koi"}], "bucket": [{"id": "perch"}]}
+    data = {"name": username.title(), "location": "lagoon", "clock": 42, "look": {"hat": "straw"}, "aquarium": [{"id": "koi"}],
+            "decor": [{"uid": 1, "id": "castle", "x": 40, "y": 121}], "bucket": [{"id": "perch"}]}
     assert client.put("/api/save", headers=h, json={"data": data, "coins": coins, "version": 0}).status_code == 200
     return username, h
 
@@ -73,6 +74,7 @@ def test_worlds_are_friends_only_and_hide_private_data():
     assert w.status_code == 200
     body = w.json()
     assert body["location"] == "lagoon" and body["aquarium"] == [{"id": "koi"}]
+    assert body["decor"] == [{"uid": 1, "id": "castle", "x": 40, "y": 121}]
     assert "coins" not in body and "bucket" not in body
     assert client.get(f"/api/worlds/{a[0]}", headers=c[1]).status_code == 403
 

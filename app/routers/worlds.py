@@ -11,8 +11,9 @@ from ..social import are_friends, user_by_name
 
 router = APIRouter(prefix="/api/worlds", tags=["worlds"])
 
-# Only what a visitor needs to see. Coins, bucket and the rest stay private.
-PUBLIC_FIELDS = ("name", "look", "boat", "location", "clock", "aquarium", "tankLvl", "unlocked")
+# Only what a visitor needs to see (decor is the tank's props). Coins and the
+# rest stay private.
+PUBLIC_FIELDS = ("name", "look", "boat", "location", "clock", "aquarium", "decor", "tankLvl", "unlocked")
 
 
 @router.get("/{username}")
