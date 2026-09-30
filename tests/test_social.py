@@ -118,14 +118,16 @@ def test_live_room_relays_between_friends():
     htok = host[1]["Authorization"].split()[1]
     gtok = guest[1]["Authorization"].split()[1]
     stok = stranger[1]["Authorization"].split()[1]
-    with client.websocket_connect(f"/ws/world/{host[0]}?token={htok}") as hws:
+    with client.websocket_connect(f"/ws/world/{host[0]}") as hws:
+        hws.send_json({"t": "auth", "token": htok})
         roster = hws.receive_json()
         assert roster["t"] == "roster" and roster["members"] == []
         hws.send_json({"t": "world", "location": "cove", "clock": 10})
         # presence shows up in the guest's friends list
         f = client.get("/api/friends", headers=guest[1]).json()["friends"][0]
         assert f["online"] is True and f["at"] == "home"
-        with client.websocket_connect(f"/ws/world/{host[0]}?token={gtok}") as gws:
+        with client.websocket_connect(f"/ws/world/{host[0]}") as gws:
+            gws.send_json({"t": "auth", "token": gtok})
             groster = gws.receive_json()
             assert groster["world"]["location"] == "cove"
             assert hws.receive_json() == {"t": "join", "from": guest[0]}
@@ -139,7 +141,8 @@ def test_live_room_relays_between_friends():
             assert hws.receive_json()["t"] == "emote"
         assert hws.receive_json() == {"t": "leave", "from": guest[0]}
     # strangers are turned away
-    with client.websocket_connect(f"/ws/world/{host[0]}?token={stok}") as sws:
+    with client.websocket_connect(f"/ws/world/{host[0]}") as sws:
+        sws.send_json({"t": "auth", "token": stok})
         assert sws.receive_json() == {"t": "error", "error": "not_friends"}
         with pytest.raises(WebSocketDisconnect):
             sws.receive_json()
@@ -149,7 +152,18 @@ def test_gift_notifies_an_online_recipient():
     a, b = player(coins=50), player()
     befriend(a, b)
     btok = b[1]["Authorization"].split()[1]
-    with client.websocket_connect(f"/ws/world/{b[0]}?token={btok}") as ws:
+    with client.websocket_connect(f"/ws/world/{b[0]}") as ws:
+        ws.send_json({"t": "auth", "token": btok})
         ws.receive_json()  # roster
         client.post("/api/gifts", headers=a[1], json={"to": b[0], "amount": 7})
         assert ws.receive_json() == {"t": "gift", "from": a[0], "amount": 7}
+
+
+def test_room_rejects_missing_or_bad_auth():
+    host = player()
+    with client.websocket_connect(f"/ws/world/{host[0]}") as ws:
+        ws.send_json({"t": "state"})  # not an auth message
+        assert ws.receive_json() == {"t": "error", "error": "not_logged_in"}
+    with client.websocket_connect(f"/ws/world/{host[0]}") as ws:
+        ws.send_json({"t": "auth", "token": "forged"})
+        assert ws.receive_json() == {"t": "error", "error": "not_logged_in"}

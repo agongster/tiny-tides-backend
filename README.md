@@ -28,9 +28,9 @@ this service adds accounts, friends, visiting, gifting and fishing together.
 | POST | `/api/gifts` | `{to, amount, note}`: send coins to a friend (1–1000 each, 2000 a day) |
 | GET | `/api/gifts` | Recent gifts sent and received |
 | POST | `/api/gifts/claim` | Collect waiting gifts into your balance |
-| WS | `/ws/world/{host}?token=…` | Live room in `host`'s world (the host or their friends, 4 people max) |
+| WS | `/ws/world/{host}` | Live room in `host`'s world (the host or their friends, 4 people max). The first message must be `{"t": "auth", "token": …}`. |
 
-Send the token as `Authorization: Bearer <token>` (a WebSocket takes it as `?token=` because browsers can't set headers on one). Interactive docs are at `/docs`.
+Send the token as `Authorization: Bearer <token>`. A WebSocket can't carry that header from a browser, so it sends the token as its first message instead of in the URL, which would put it in the access logs. Interactive docs are at `/docs`.
 
 ## How the multiplayer parts work
 

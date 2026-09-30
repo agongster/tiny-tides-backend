@@ -8,6 +8,7 @@ Rooms live in memory. That is fine on a single Render instance; running more
 than one instance would need a shared broker such as Redis.
 """
 
+import asyncio
 import json
 import time
 from dataclasses import dataclass, field
@@ -127,9 +128,16 @@ def _authenticate(token: str, host_name: str) -> tuple[User, User] | str:
 
 
 @router.websocket("/ws/world/{host_name}")
-async def world_socket(ws: WebSocket, host_name: str, token: str = "") -> None:
+async def world_socket(ws: WebSocket, host_name: str) -> None:
     await ws.accept()
-    auth = _authenticate(token, host_name)
+    # The login token arrives as the first message, not in the URL: URLs end up
+    # in access logs, and a token in a log is a key to someone's account.
+    try:
+        first = json.loads(await asyncio.wait_for(ws.receive_text(), timeout=10))
+        token = first.get("token", "") if isinstance(first, dict) and first.get("t") == "auth" else ""
+    except (asyncio.TimeoutError, ValueError, WebSocketDisconnect):
+        token = ""
+    auth = _authenticate(str(token), host_name)
     if isinstance(auth, str):
         await ws.send_json({"t": "error", "error": auth})
         await ws.close(code=4403)
