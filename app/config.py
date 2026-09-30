@@ -61,3 +61,13 @@ ALLOWED_ORIGINS = [
     for origin in os.getenv("ALLOWED_ORIGINS", "https://agongster.github.io").split(",")
     if origin.strip().rstrip("/")
 ]
+
+# ---- multiplayer limits
+GIFT_MAX = int(os.getenv("GIFT_MAX", "1000"))            # most coins in one gift
+GIFT_DAILY_LIMIT = int(os.getenv("GIFT_DAILY_LIMIT", "2000"))  # per sender, rolling 24h
+ROOM_SIZE = int(os.getenv("ROOM_SIZE", "4"))             # host + 3 visitors
+
+# A save may only gain this many coins, plus COIN_RATE per second since its last
+# upload. Real fishing can't beat it; typing a big number into the console can.
+COIN_JUMP_BASE = int(os.getenv("COIN_JUMP_BASE", "5000"))
+COIN_RATE = int(os.getenv("COIN_RATE", "300"))

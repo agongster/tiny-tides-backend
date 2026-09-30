@@ -7,4 +7,4 @@ venv/
 *.db
 .DS_Store
 .pytest_cache/
-tests/test.db
+tests/tiny_tides.db

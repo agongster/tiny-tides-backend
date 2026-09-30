@@ -1,7 +1,5 @@
-"""Tiny Tides multiplayer API.
-
-Step 2 of the plan: accounts with unique usernames, and cloud saves.
-"""
+"""Tiny Tides multiplayer API: accounts, cloud saves, friends, visiting,
+gifts, and live rooms for fishing together."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +8,8 @@ from sqlalchemy import text
 from . import models  # noqa: F401  (registers the tables)
 from .config import ALLOWED_ORIGINS, JWT_SECRET_IS_THROWAWAY, USING_SQLITE_FALLBACK
 from .database import Base, engine
-from .routers import auth, saves
+from . import realtime
+from .routers import auth, friends, gifts, saves, worlds
 
 # Creates any missing tables on startup. It never alters an existing table, so
 # later column changes will need a small migration.
@@ -29,6 +28,10 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(saves.router)
+app.include_router(friends.router)
+app.include_router(worlds.router)
+app.include_router(gifts.router)
+app.include_router(realtime.router)
 
 
 @app.get("/api/health")
