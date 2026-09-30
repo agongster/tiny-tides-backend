@@ -60,7 +60,11 @@ pytest          # runs the API tests against a throwaway SQLite database
   player has to reach the same process. Without the flag, uvicorn starts one
   process per `WEB_CONCURRENCY`, and friends end up in different copies of the
   server: visitors see the host as napping and nobody sees anyone. `/api/health`
-  shows `"process"`, which should stay the same across refreshes.
+  shows `"instance"`, which should stay the same across refreshes.
+
+  For the same reason, the service must run as **one instance**. If
+  `"instance"` changes between refreshes, Render is running more than one:
+  set Settings → Scaling to a single instance.
 
 Environment variables:
 

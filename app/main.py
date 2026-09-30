@@ -3,6 +3,7 @@ gifts, and live rooms for fishing together."""
 
 import logging
 import os
+import secrets
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +23,9 @@ Base.metadata.create_all(engine)
 # must run as ONE process. uvicorn quietly starts several when WEB_CONCURRENCY
 # is set, and then friends in different processes can't see each other.
 WORKERS = os.getenv("WEB_CONCURRENCY", "1")
+# A random name for this running copy. Process ids repeat across containers
+# (every instance can be pid 55), so this is what tells instances apart.
+INSTANCE = secrets.token_hex(4)
 if WORKERS != "1":
     logging.getLogger("uvicorn.error").warning(
         "WEB_CONCURRENCY=%s: multiplayer needs a single process. Add --workers 1 "
@@ -65,8 +69,9 @@ def health() -> dict:
         "database": database,
         "jwt_secret": "throwaway (local)" if JWT_SECRET_IS_THROWAWAY else "set",
         "allowed_origins": ALLOWED_ORIGINS,
-        # should stay the same across refreshes; if it changes, there's more than one process
-        "process": os.getpid(),
+        # should stay the same across refreshes; if it changes, more than one
+        # copy of the server is running and multiplayer will split between them
+        "instance": INSTANCE,
         "web_concurrency": WORKERS,
     }
 
