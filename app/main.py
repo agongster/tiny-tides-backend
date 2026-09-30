@@ -1,6 +1,9 @@
 """Tiny Tides multiplayer API: accounts, cloud saves, friends, visiting,
 gifts, and live rooms for fishing together."""
 
+import logging
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -14,6 +17,16 @@ from .routers import auth, friends, gifts, saves, worlds
 # Creates any missing tables on startup. It never alters an existing table, so
 # later column changes will need a small migration.
 Base.metadata.create_all(engine)
+
+# Live rooms and "who's online" are kept in this process's memory, so the API
+# must run as ONE process. uvicorn quietly starts several when WEB_CONCURRENCY
+# is set, and then friends in different processes can't see each other.
+WORKERS = os.getenv("WEB_CONCURRENCY", "1")
+if WORKERS != "1":
+    logging.getLogger("uvicorn.error").warning(
+        "WEB_CONCURRENCY=%s: multiplayer needs a single process. Add --workers 1 "
+        "to the start command.", WORKERS,
+    )
 
 app = FastAPI(title="Tiny Tides API")
 
@@ -52,6 +65,9 @@ def health() -> dict:
         "database": database,
         "jwt_secret": "throwaway (local)" if JWT_SECRET_IS_THROWAWAY else "set",
         "allowed_origins": ALLOWED_ORIGINS,
+        # should stay the same across refreshes; if it changes, there's more than one process
+        "process": os.getpid(),
+        "web_concurrency": WORKERS,
     }
 
 

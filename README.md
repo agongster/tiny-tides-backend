@@ -54,7 +54,13 @@ pytest          # runs the API tests against a throwaway SQLite database
 ## Deploying on Render
 
 - **Build command:** `pip install -r requirements.txt`
-- **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1`
+
+  Keep `--workers 1`. Live rooms and online status live in memory, so every
+  player has to reach the same process. Without the flag, uvicorn starts one
+  process per `WEB_CONCURRENCY`, and friends end up in different copies of the
+  server: visitors see the host as napping and nobody sees anyone. `/api/health`
+  shows `"process"`, which should stay the same across refreshes.
 
 Environment variables:
 
