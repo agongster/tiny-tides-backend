@@ -258,3 +258,27 @@ def test_fish_gifts_move_between_saves():
     assert client.post("/api/gifts/claim", headers=b[1]).json()["fish"] == []
     hist = client.get("/api/gifts", headers=a[1]).json()
     assert hist["fish_sent"][0]["fish"]["id"] == "perch" and hist["fish_remaining_today"] == 19
+
+
+def test_fish_gifts_and_worlds_with_several_tanks():
+    a, b = player(), player()
+    befriend(a, b)
+    tanks = [{"uid": 1, "name": "Big one", "lvl": 0, "fish": [{"uid": 5, "id": "koi", "size": 30, "stars": 2, "value": 40}], "decor": []},
+             {"uid": 2, "name": "Koi pond", "lvl": 1, "fish": [], "decor": []}]
+    home = {"wall": "peach", "floor": "wood", "items": [{"uid": 1, "id": "tank", "tank": 1, "x": 200, "y": 150}, {"uid": 2, "id": "sofa", "x": 60, "y": 160}]}
+    for who, main in ((a, 1), (b, 2)):
+        v = client.get("/api/save", headers=who[1]).json()["version"]
+        data = {"name": "X", "bucket": [{"id": "perch", "uid": 9} for _ in range(6)] if who is b else [], "tanks": tanks, "mainTank": main, "home": home, "nextUid": 10}
+        assert client.put("/api/save", headers=who[1], json={"data": data, "coins": 0, "version": v}).status_code == 200
+    # a visitor sees the home and every tank
+    w = client.get(f"/api/worlds/{a[0]}", headers=b[1]).json()
+    assert [t["name"] for t in w["tanks"]] == ["Big one", "Koi pond"] and w["home"]["items"][1]["id"] == "sofa" and w["mainTank"] == 1
+    # a fish can be sent from any tank...
+    r = client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 5})
+    assert r.status_code == 201 and r.json()["from"] == "tank"
+    assert client.get("/api/save", headers=a[1]).json()["data"]["tanks"][0]["fish"] == []
+    # ...and lands in the friend's main tank when their bucket (6 fish, tin pail) is full
+    got = client.post("/api/gifts/claim", headers=b[1]).json()["fish"][0]
+    assert got["where"] == "tank" and got["tank"] == 2
+    saved = client.get("/api/save", headers=b[1]).json()["data"]
+    assert [f["id"] for f in saved["tanks"][1]["fish"]] == ["koi"] and saved["tanks"][0]["fish"][0]["id"] == "koi"

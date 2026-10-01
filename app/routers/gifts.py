@@ -72,16 +72,21 @@ async def send_fish(body: FishGiftIn, me: User = Depends(current_user), db: Sess
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, {"error": "fish_daily_limit", "limit": FISH_GIFT_DAILY_LIMIT})
     mine = db.scalar(select(Save).where(Save.user_id == me.id).with_for_update())
     data = dict(mine.data or {}) if mine else {}
+    # look in the bucket, then every tank (and the old one-tank "aquarium")
     fish, where = None, None
-    for key in ("bucket", "aquarium"):
-        stash = list(data.get(key) or [])
+    tanks = [dict(t) for t in (data.get("tanks") or []) if isinstance(t, dict)]
+    places = [("bucket", data, "bucket")] + [("tank", t, "fish") for t in tanks] + [("tank", data, "aquarium")]
+    for label, holder, key in places:
+        stash = list(holder.get(key) or [])
         for i, c in enumerate(stash):
             if isinstance(c, dict) and c.get("uid") == body.uid:
-                fish, where = stash.pop(i), key
-                data[key] = stash
+                fish, where = stash.pop(i), label
+                holder[key] = stash
                 break
         if fish:
             break
+    if tanks:
+        data["tanks"] = tanks
     if fish is None:
         db.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no_such_fish")
@@ -164,7 +169,11 @@ def claim(me: User = Depends(current_user), db: Session = Depends(get_db)) -> di
     placed = []
     if fish_waiting:
         data = dict(mine.data or {})
-        bucket, tank = list(data.get("bucket") or []), list(data.get("aquarium") or [])
+        # the main tank (or the old one-tank "aquarium" for older saves)
+        tanks = [dict(t) for t in (data.get("tanks") or []) if isinstance(t, dict)]
+        main = next((t for t in tanks if t.get("uid") == data.get("mainTank")), tanks[0] if tanks else None)
+        bucket = list(data.get("bucket") or [])
+        tank = list((main.get("fish") if main else data.get("aquarium")) or [])
         level = data.get("bucketLvl") if isinstance(data.get("bucketLvl"), int) else 0
         cap = BUCKET_CAPS[max(0, min(level, len(BUCKET_CAPS) - 1))]
         next_uid = int(data.get("nextUid") or 1)
@@ -174,8 +183,13 @@ def claim(me: User = Depends(current_user), db: Session = Depends(get_db)) -> di
             next_uid += 1
             where = "bucket" if len(bucket) < cap else "tank"
             (bucket if where == "bucket" else tank).append(fish)
-            placed.append({**_fish_out(db, g, g.from_id), "fish": fish, "where": where})
-        data["bucket"], data["aquarium"], data["nextUid"] = bucket, tank, next_uid
+            placed.append({**_fish_out(db, g, g.from_id), "fish": fish, "where": where, "tank": main.get("uid") if main else None})
+        data["bucket"], data["nextUid"] = bucket, next_uid
+        if main:
+            main["fish"] = tank
+            data["tanks"] = tanks
+        else:
+            data["aquarium"] = tank
         mine.data = data
     mine.coins += total
     mine.version += 1

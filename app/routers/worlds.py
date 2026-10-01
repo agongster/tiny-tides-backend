@@ -11,9 +11,11 @@ from ..social import are_friends, user_by_name
 
 router = APIRouter(prefix="/api/worlds", tags=["worlds"])
 
-# Only what a visitor needs to see (decor is the tank's props). Coins and the
-# rest stay private.
-PUBLIC_FIELDS = ("name", "look", "boat", "location", "clock", "aquarium", "decor", "tankLvl", "unlocked")
+# Only what a visitor needs to see: their look, boat and map, and their home
+# (the room, and every tank with its fish and props). Coins and the rest stay
+# private. aquarium/decor/tankLvl are the one-tank format from older saves.
+PUBLIC_FIELDS = ("name", "look", "boat", "location", "clock", "unlocked", "tanks", "mainTank", "home",
+                 "aquarium", "decor", "tankLvl")
 
 
 @router.get("/{username}")
