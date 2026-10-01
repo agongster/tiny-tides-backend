@@ -10,7 +10,9 @@ than one instance would need a shared broker such as Redis.
 
 import asyncio
 import json
+import re
 import time
+from collections import deque
 from dataclasses import dataclass, field
 
 import jwt
@@ -27,6 +29,21 @@ router = APIRouter()
 RELAYED = {"hello", "state", "catch", "emote", "world"}
 MAX_MESSAGE = 4096
 
+# Chat: short messages, a few at a time, and the last few kept for newcomers.
+CHAT_MAX_LEN = 150
+CHAT_BURST = 5          # at most this many messages...
+CHAT_WINDOW = 10.0      # ...per this many seconds, per player
+CHAT_HISTORY = 30
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def clean_chat(text: object) -> str:
+    """One line of plain text, trimmed and capped; empty if there's nothing left."""
+    if not isinstance(text, str):
+        return ""
+    text = _CONTROL.sub(" ", text)
+    return " ".join(text.split())[:CHAT_MAX_LEN]
+
 
 @dataclass
 class Member:
@@ -37,6 +54,7 @@ class Member:
     # simple rate limit: at most 40 messages per 5 seconds
     window_start: float = field(default_factory=time.monotonic)
     window_count: int = 0
+    chat_times: deque = field(default_factory=lambda: deque(maxlen=CHAT_BURST))
 
     def allow(self) -> bool:
         now = time.monotonic()
@@ -45,6 +63,13 @@ class Member:
         self.window_count += 1
         return self.window_count <= 40
 
+    def allow_chat(self) -> bool:
+        now = time.monotonic()
+        if len(self.chat_times) == CHAT_BURST and now - self.chat_times[0] < CHAT_WINDOW:
+            return False
+        self.chat_times.append(now)
+        return True
+
 
 @dataclass
 class Room:
@@ -52,6 +77,7 @@ class Room:
     host_username: str
     members: dict[int, Member] = field(default_factory=dict)
     world: dict | None = None  # the host's last "world" message: location, clock, boat
+    chat: deque = field(default_factory=lambda: deque(maxlen=CHAT_HISTORY))
 
 
 class Hub:
@@ -185,6 +211,7 @@ async def world_socket(ws: WebSocket, host_name: str) -> None:
         "you": user.username,
         "world": room.world,
         "members": [{"username": m.username, "hello": m.hello} for m in room.members.values() if m is not me],
+        "chat": list(room.chat),
     })
     if not old:
         await hub.broadcast(room, {"t": "join", "from": user.username}, skip=user.id)
@@ -200,6 +227,17 @@ async def world_socket(ws: WebSocket, host_name: str) -> None:
             if isinstance(msg, dict) and msg.get("t") == "ping":
                 # lets the game notice a connection that died without closing
                 await ws.send_json({"t": "pong"})
+                continue
+            if isinstance(msg, dict) and msg.get("t") == "chat":
+                text = clean_chat(msg.get("text"))
+                if not text:
+                    continue
+                if not me.allow_chat():
+                    await ws.send_json({"t": "chat_slow"})
+                    continue
+                line = {"t": "chat", "from": user.username, "text": text, "at": int(time.time())}
+                room.chat.append(line)
+                await hub.broadcast(room, line)  # everyone, sender included, so all see the same order
                 continue
             if not isinstance(msg, dict) or msg.get("t") not in RELAYED:
                 continue

@@ -200,3 +200,31 @@ def test_reconnecting_replaces_quietly():
                 assert h2.receive_json() == {"t": "pong"}
             # now the host really leaves
             assert gws.receive_json() == {"t": "leave", "from": host[0]}
+
+
+def test_chat_is_cleaned_limited_and_remembered():
+    host, guest = player(), player()
+    befriend(host, guest)
+    htok = host[1]["Authorization"].split()[1]
+    gtok = guest[1]["Authorization"].split()[1]
+    with client.websocket_connect(f"/ws/world/{host[0]}") as hws:
+        hws.send_json({"t": "auth", "token": htok})
+        assert hws.receive_json()["chat"] == []
+        hws.send_json({"t": "chat", "text": "  hello\n   there <b>friend</b>  " + "x" * 300})
+        line = hws.receive_json()
+        assert line["t"] == "chat" and line["from"] == host[0]
+        assert line["text"].startswith("hello there <b>friend</b> x") and len(line["text"]) == 150
+        hws.send_json({"t": "chat", "text": "   "})  # nothing to say: dropped
+        hws.send_json({"t": "chat", "text": 42})  # not text: dropped
+        with client.websocket_connect(f"/ws/world/{host[0]}") as gws:
+            gws.send_json({"t": "auth", "token": gtok})
+            roster = gws.receive_json()
+            assert [c["from"] for c in roster["chat"]] == [host[0]]  # newcomers see recent chat
+            assert hws.receive_json()["t"] == "join"
+            for i in range(5):
+                gws.send_json({"t": "chat", "text": f"fish {i}"})
+            for i in range(5):
+                assert gws.receive_json()["text"] == f"fish {i}"
+                assert hws.receive_json()["text"] == f"fish {i}"
+            gws.send_json({"t": "chat", "text": "one too many"})
+            assert gws.receive_json() == {"t": "chat_slow"}
