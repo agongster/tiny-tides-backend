@@ -65,6 +65,12 @@ ALLOWED_ORIGINS = [
 # ---- multiplayer limits
 GIFT_MAX = int(os.getenv("GIFT_MAX", "1000"))            # most coins in one gift
 GIFT_DAILY_LIMIT = int(os.getenv("GIFT_DAILY_LIMIT", "2000"))  # per sender, rolling 24h
+FISH_GIFT_DAILY_LIMIT = int(os.getenv("FISH_GIFT_DAILY_LIMIT", "20"))  # fish per sender, rolling 24h
+# Bucket sizes by upgrade level (mirrors BUCKETS in the game's data.js), so a
+# claimed fish lands in the bucket if there's room and the tank otherwise.
+BUCKET_CAPS = (6, 12, 24, 40, 64)
+# Fish that can't be given away (LeBron stays in your tank forever).
+UNGIFTABLE_FISH = {"lebron"}
 ROOM_SIZE = int(os.getenv("ROOM_SIZE", "4"))             # host + 3 visitors
 
 # A save may only gain this many coins, plus COIN_RATE per second since its last

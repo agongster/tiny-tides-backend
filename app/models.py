@@ -73,3 +73,18 @@ class Gift(Base):
     note: Mapped[str] = mapped_column(String(60), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class FishGift(Base):
+    """A fish sent to a friend: taken out of the sender's save when sent, and
+    put into the recipient's when they claim it."""
+
+    __tablename__ = "fish_gifts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    to_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    fish: Mapped[dict] = mapped_column(JSON)  # {id, size, stars, value}
+    note: Mapped[str] = mapped_column(String(60), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

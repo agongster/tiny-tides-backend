@@ -228,3 +228,33 @@ def test_chat_is_cleaned_limited_and_remembered():
                 assert hws.receive_json()["text"] == f"fish {i}"
             gws.send_json({"t": "chat", "text": "one too many"})
             assert gws.receive_json() == {"t": "chat_slow"}
+
+
+def test_fish_gifts_move_between_saves():
+    a, b, c = player(), player(), player()
+    befriend(a, b)
+    data = {"name": "A", "bucket": [{"uid": 7, "id": "perch", "size": 20, "stars": 2, "value": 12}],
+            "aquarium": [{"uid": 8, "id": "lebron", "size": 205, "stars": 3, "value": 2323}], "nextUid": 9}
+    v = client.get("/api/save", headers=a[1]).json()["version"]
+    assert client.put("/api/save", headers=a[1], json={"data": data, "coins": 0, "version": v}).status_code == 200
+    # strangers, missing fish, and LeBron are all refused
+    assert client.post("/api/gifts/fish", headers=a[1], json={"to": c[0], "uid": 7}).status_code == 403
+    assert client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 99}).json()["detail"] == "no_such_fish"
+    assert client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 8}).json()["detail"] == "cant_gift_that"
+    r = client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 7, "note": "for your tank"})
+    assert r.status_code == 201 and r.json()["from"] == "bucket"
+    sender = client.get("/api/save", headers=a[1]).json()
+    assert sender["data"]["bucket"] == [] and sender["version"] == r.json()["version"]
+    # sending it again fails: it's gone
+    assert client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 7}).json()["detail"] == "no_such_fish"
+    before = client.get("/api/save", headers=b[1]).json()
+    got = client.post("/api/gifts/claim", headers=b[1]).json()
+    assert len(got["fish"]) == 1 and got["fish"][0]["fish"]["id"] == "perch" and got["fish"][0]["where"] == "bucket"
+    assert got["fish"][0]["note"] == "for your tank" and got["version"] == before["version"] + 1
+    after = client.get("/api/save", headers=b[1]).json()["data"]
+    # added on top of what the friend already had (the test helper gives everyone a perch)
+    assert len(after["bucket"]) == len(before["data"]["bucket"]) + 1
+    assert after["bucket"][-1] == got["fish"][0]["fish"] and after["bucket"][-1]["id"] == "perch"
+    assert client.post("/api/gifts/claim", headers=b[1]).json()["fish"] == []
+    hist = client.get("/api/gifts", headers=a[1]).json()
+    assert hist["fish_sent"][0]["fish"]["id"] == "perch" and hist["fish_remaining_today"] == 19
