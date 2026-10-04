@@ -69,8 +69,9 @@ FISH_GIFT_DAILY_LIMIT = int(os.getenv("FISH_GIFT_DAILY_LIMIT", "20"))  # fish pe
 # Bucket sizes by upgrade level (mirrors BUCKETS in the game's data.js), so a
 # claimed fish lands in the bucket if there's room and the tank otherwise.
 BUCKET_CAPS = (6, 12, 24, 40, 64)
-# Fish that can't be given away (LeBron stays in your tank forever).
-UNGIFTABLE_FISH = {"lebron"}
+# Fish that can't be given away. (LeBron used to be here; he can be gifted now,
+# though he still can't be sold.)
+UNGIFTABLE_FISH: set[str] = set()
 ROOM_SIZE = int(os.getenv("ROOM_SIZE", "4"))             # host + 3 visitors
 
 # A save may only gain this many coins, plus COIN_RATE per second since its last

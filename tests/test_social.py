@@ -237,10 +237,9 @@ def test_fish_gifts_move_between_saves():
             "aquarium": [{"uid": 8, "id": "lebron", "size": 205, "stars": 3, "value": 2323}], "nextUid": 9}
     v = client.get("/api/save", headers=a[1]).json()["version"]
     assert client.put("/api/save", headers=a[1], json={"data": data, "coins": 0, "version": v}).status_code == 200
-    # strangers, missing fish, and LeBron are all refused
+    # strangers and missing fish are refused
     assert client.post("/api/gifts/fish", headers=a[1], json={"to": c[0], "uid": 7}).status_code == 403
     assert client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 99}).json()["detail"] == "no_such_fish"
-    assert client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 8}).json()["detail"] == "cant_gift_that"
     r = client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 7, "note": "for your tank"})
     assert r.status_code == 201 and r.json()["from"] == "bucket"
     sender = client.get("/api/save", headers=a[1]).json()
@@ -258,6 +257,10 @@ def test_fish_gifts_move_between_saves():
     assert client.post("/api/gifts/claim", headers=b[1]).json()["fish"] == []
     hist = client.get("/api/gifts", headers=a[1]).json()
     assert hist["fish_sent"][0]["fish"]["id"] == "perch" and hist["fish_remaining_today"] == 19
+    # LeBron can be gifted too (from the tank)
+    r = client.post("/api/gifts/fish", headers=a[1], json={"to": b[0], "uid": 8})
+    assert r.status_code == 201 and r.json()["from"] == "tank"
+    assert client.post("/api/gifts/claim", headers=b[1]).json()["fish"][0]["fish"]["id"] == "lebron"
 
 
 def test_fish_gifts_and_worlds_with_several_tanks():
